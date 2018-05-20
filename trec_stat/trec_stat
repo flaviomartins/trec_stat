@@ -94,7 +94,7 @@ espairedt = d / np.sqrt(V)
 alpha = 1 - MEP
 tinv = stats.t.ppf(1 - (MEP / 2), nm1)
 if n > 1000:
-    # Sakai's paper uses the same formula for small samples 
+    # Sakai's paper uses the formula for large samples 
     scale = np.sqrt(V / n)
 else:
     # However the following should be used for n <= 1000 samples
@@ -145,7 +145,7 @@ espairedt = d / np.sqrt(V)
 alpha = 1 - 2*MEP
 tinv = stats.t.ppf(1 - 2*MEP, nm1)
 if n > 1000:
-    # Sakai's paper uses the same formula for small samples 
+    # Sakai's paper uses the formula for large samples 
     scale = np.sqrt(V / n)
 else:
     # However the following should be used for n <= 1000 samples
@@ -191,7 +191,7 @@ espairedt = d / np.sqrt(V)
 alpha = 1 - 2*MEP
 tinv = stats.t.ppf(1 - 2*MEP, nm1)
 if n > 1000:
-    # Sakai's paper uses the same formula for small samples 
+    # Sakai's paper uses the formula for large samples 
     scale = np.sqrt(V / n)
 else:
     # However the following should be used for n <= 1000 samples
