@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 from __future__ import print_function
 
+import logging
+from optparse import OptionParser
 import sys
 import numpy as np
 import pandas as pd
@@ -8,13 +10,45 @@ from scipy import stats
 import statsmodels.stats.api as sms
 
 
-if len(sys.argv) > 3:
-	METRIC = sys.argv[3]
-else:
-	METRIC = 'map'
+# Display progress logs on stdout
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s %(levelname)s %(message)s')
 
-system_a = sys.argv[1]
-system_b = sys.argv[2]
+# parse commandline arguments
+op = OptionParser()
+op.add_option("--metric",
+              dest="metric", type="str", default="map",
+              help="Specify the evaluation metric to use for the test.")
+op.add_option("--level", type=float, default=.05,
+              help="Significance level.")
+op.add_option("--margin", type=float, default=.01,
+              help="Equivalence margin.")
+op.add_option("--quiet",
+              action="store_true", dest="quiet", default=False,
+              help="Just output the p-value.")
+op.add_option("--verbose",
+              action="store_true", dest="verbose", default=False,
+              help="Print reports inside tests.")
+
+
+def is_interactive():
+    return not hasattr(sys.modules['__main__'], '__file__')
+
+# work-around for Jupyter notebook and IPython console
+argv = [] if is_interactive() else sys.argv[1:]
+(opts, args) = op.parse_args(argv)
+if len(args) > 2:
+    print(__doc__)
+    op.print_help()
+    op.error("this script takes exactly two arguments.")
+    sys.exit(1)
+
+system_a = args[0]
+system_b = args[1]
+METRIC = opts.metric
+MEP = opts.level
+delta = opts.margin
+
 
 tnames = ['measure', 'topic', 'value']
 dfA = pd.read_table(system_a, delim_whitespace=True, header=None, names=tnames)
@@ -57,7 +91,6 @@ dd = sms.DescrStatsW(valuesB - valuesA)
 
 espairedt = d / np.sqrt(V)
 
-MEP = 0.05
 alpha = 1 - MEP
 tinv = stats.t.ppf(1 - (MEP / 2), nm1)
 if n > 1000:
@@ -87,7 +120,7 @@ upper = d+me
 # stats.ttest_rel(post, pre)
 t, p, dof = dd.ttest_mean(0, alternative='two-sided')
 print('Difference ({0:.2f}\%)'.format(df['B'].mean() / df['A'].mean() * 10.0))
-print('The t-statistic is {0:.4f} and the p-value is {1:f}'.format(t, p))
+print('t({0}) = {1:.2f} and p < {2:f}'.format(nm1, t, p))
 print('>>', end='')
 if p < 0.01 and t > 0:
     print('0.01')
@@ -96,20 +129,19 @@ elif p < 0.05 and t > 0:
 else:
     print('NOT')
 
-
-if p < 0.05 and t > 0:
-    print("According to a two-sided paired t-test for the difference in {10:s} means \(\mean{{d}} = {0:.4f}\) "
-        "(with the unbiased estimate of the population variance \(V = {1:.4f}\)), "
-        "{8:s} statistically significantly outperforms {9:s} "
-        "\((t({2}) = {3:.2f}\), "
-        "\(p < {4:f}\), "
-        "\(ES_{{pairedt}} = {5:.2f}\), "
-        "95\% CI \([{6:.4f},{7:.4f}]\)).".format(d, V, nm1, t, p, espairedt, lower, upper, system_b, system_a, METRIC.upper()))
+if not opts.quiet:
+    if p < 0.05 and t > 0:
+        print("According to a two-sided paired t-test for the difference in {10:s} means \(\mean{{d}} = {0:.4f}\) "
+            "(with the unbiased estimate of the population variance \(V = {1:.4f}\)), "
+            "{8:s} statistically significantly outperforms {9:s} "
+            "\((t({2}) = {3:.2f}\), "
+            "\(p < {4:f}\), "
+            "\(ES_{{pairedt}} = {5:.2f}\), "
+            "95\% CI \([{6:.4f},{7:.4f}]\)).".format(d, V, nm1, t, p, espairedt, lower, upper, system_b, system_a, METRIC.upper()))
 
 
 espairedt = d / np.sqrt(V)
 
-MEP = 0.05
 alpha = 1 - 2*MEP
 tinv = stats.t.ppf(1 - 2*MEP, nm1)
 if n > 1000:
@@ -122,8 +154,7 @@ me = tinv * scale
 
 lower = d-me
 upper = d+me
-delta = 0.01
-# print(lower, upper, delta)
+# print(lower, upper)
 
 # paired t-tost (equivalence)
 # e.g., before and after a treatment
@@ -134,7 +165,7 @@ if t1[1] < t2[1]:
 else:
     t = t1[0]
 print('\nEquivalence')
-print('The t-statistic is {0:.4f} and the p-value is {1:f}'.format(t, p))
+print('t({0}) = {1:.2f} and p < {2:f}'.format(nm1, t, p))
 print('>>', end='')
 if lower > -delta and upper < delta and p < 0.01:
     print('0.01')
@@ -143,21 +174,20 @@ elif lower > -delta and upper < delta and p < 0.05:
 else:
     print('NOT')
 
-
-if lower > -delta and upper < delta and p < 0.05:
-    print("According to two one-sided paired t-tests for the equivalence in {10:s} means \(\mean{{d}} = {0:.4f}\) "
-        "(with the unbiased estimate of the population variance \(V = {1:.4f}\)), "
-        "with equivalence margin \(\delta = {11:.2f}\) "
-        "{8:s} is statistically equivalent to {9:s} "
-        "\((t({2}) = {3:.2f}\), "
-        "\(p < {4:f}\), "
-        "\(ES_{{pairedt}} = {5:.2f}\), "
-        "90\% CI \([{6:.4f},{7:.4f}]\)).".format(d, V, nm1, t, p, espairedt, lower, upper, system_b, system_a, METRIC.upper(), delta))
+if not opts.quiet:
+    if lower > -delta and upper < delta and p < 0.05:
+        print("According to two one-sided paired t-tests for the equivalence in {10:s} means \(\mean{{d}} = {0:.4f}\) "
+            "(with the unbiased estimate of the population variance \(V = {1:.4f}\)), "
+            "with equivalence margin \(\delta = {11:.2f}\) "
+            "{8:s} is statistically equivalent to {9:s} "
+            "\((t({2}) = {3:.2f}\), "
+            "\(p < {4:f}\), "
+            "\(ES_{{pairedt}} = {5:.2f}\), "
+            "90\% CI \([{6:.4f},{7:.4f}]\)).".format(d, V, nm1, t, p, espairedt, lower, upper, system_b, system_a, METRIC.upper(), delta))
 
 
 espairedt = d / np.sqrt(V)
 
-MEP = 0.05
 alpha = 1 - 2*MEP
 tinv = stats.t.ppf(1 - 2*MEP, nm1)
 if n > 1000:
@@ -170,14 +200,13 @@ me = tinv * scale
 
 lower = d-me
 upper = d+me
-delta = 0.01
-# print(lower, upper, delta)
+# print(lower, upper)
 
 # paired t-test (non-inferiority)
 # e.g., before and after a treatment
 t, p, dof = dd.ttest_mean(-delta, alternative='larger')
 print('\nNon-inferiority')
-print('The t-statistic is {0:.4f} and the p-value is {1:f}'.format(t, p))
+print('t({0}) = {1:.2f} and p < {2:f}'.format(nm1, t, p))
 print('>>', end='')
 if lower > -delta and p < 0.01:
     print('0.01')
@@ -186,13 +215,13 @@ elif lower > -delta and p < 0.05:
 else:
     print('NOT')
 
-
-if lower > -delta and p < 0.05:
-    print("According to a one-sided paired t-test for equality or superiority of {10:s} means \(\mean{{d}} = {0:.4f}\) "
-        "(with the unbiased estimate of the population variance \(V = {1:.4f}\)), "
-        "with equivalence margin \(\delta = {11:.2f}\) "
-        "{8:s} is statistically equal or superior to {9:s} "
-        "\((t({2}) = {3:.2f}\), "
-        "\(p < {4:f}\), "
-        "\(ES_{{pairedt}} = {5:.2f}\), "
-        "90\% CI \([{6:.4f},{7:.4f}]\)).".format(d, V, nm1, t, p, espairedt, lower, upper, system_b, system_a, METRIC.upper(), delta))
+if not opts.quiet:
+    if lower > -delta and p < 0.05:
+        print("According to a one-sided paired t-test for equality or superiority of {10:s} means \(\mean{{d}} = {0:.4f}\) "
+            "(with the unbiased estimate of the population variance \(V = {1:.4f}\)), "
+            "with equivalence margin \(\delta = {11:.2f}\) "
+            "{8:s} is statistically equal or superior to {9:s} "
+            "\((t({2}) = {3:.2f}\), "
+            "\(p < {4:f}\), "
+            "\(ES_{{pairedt}} = {5:.2f}\), "
+            "90\% CI \([{6:.4f},{7:.4f}]\)).".format(d, V, nm1, t, p, espairedt, lower, upper, system_b, system_a, METRIC.upper(), delta))
