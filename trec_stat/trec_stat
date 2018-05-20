@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO,
 
 # parse commandline arguments
 op = OptionParser()
-op.add_option("--metric",
+op.add_option("-m",
               dest="metric", type="str", default="map",
               help="Specify the evaluation metric to use for the test.")
 op.add_option("--level", type=float, default=.05,
@@ -45,8 +45,8 @@ if len(args) > 2:
 
 system_a = args[0]
 system_b = args[1]
-METRIC = opts.metric
-MEP = opts.level
+metric = opts.metric
+mep = opts.level
 delta = opts.margin
 
 
@@ -68,160 +68,188 @@ try:
 except ValueError as e:
     pass
 
-df = dfA[[METRIC]].copy()
+df = dfA[[metric]].copy()
 df.columns = ['A']
-df['B'] = dfB[[METRIC]]
+df['B'] = dfB[[metric]]
 
 # pd.to_numeric() pandas 0.17 alternative
 df[['A', 'B']] = df[['A', 'B']].astype(float)
 
-df['d'] = df['B'] - df['A']
-d = df['d'].mean()
-
-df['V'] = np.power(df['d'] - d, 2)
-V = df['V'].mean()
-
-n = df.shape[0]
-nm1 = n - 1
-
 valuesA = df['A'].as_matrix()
 valuesB = df['B'].as_matrix()
-dd = sms.DescrStatsW(valuesB - valuesA)
 
 
-espairedt = d / np.sqrt(V)
+def difference(valuesA, valuesB):
+    d = valuesB - valuesA
+    dbar = np.mean(d)
+    V = np.mean(np.power(d - dbar, 2))
+    dd = sms.DescrStatsW(d)
 
-alpha = 1 - MEP
-tinv = stats.t.ppf(1 - (MEP / 2), nm1)
-if n > 1000:
+    n = len(valuesA)
+    nm1 = n - 1
+
+    espairedt = dbar / np.sqrt(V)
+
+    alpha = 1 - mep
+    tinv = stats.t.ppf(1 - (mep / 2), nm1)
     # Sakai's paper uses the formula for large samples 
-    scale = np.sqrt(V / n)
-else:
+    # scale = np.sqrt(V / n)
     # However the following should be used for n <= 1000 samples
     scale = np.sqrt(V / nm1)
-me = tinv * scale
+    me = tinv * scale
 
-lower = d-me
-upper = d+me
-# print(lower, upper)
+    lower = dbar-me
+    upper = dbar+me
+    # print(lower, upper)
 
-# lower, upper = dd.tconfint_mean(alpha=MEP, alternative='two-sided')
-# print(lower, upper)
+    # lower, upper = dd.tconfint_mean(alpha=mep, alternative='two-sided')
+    # print(lower, upper)
 
-# lower, upper = stats.t.interval(alpha=alpha, df=nm1, loc=d, scale=stats.sem(valuesB - valuesA, ddof=1))
-# print(lower, upper)
+    # lower, upper = stats.t.interval(alpha=alpha, df=nm1, loc=dbar, scale=stats.sem(d, ddof=1))
+    # print(lower, upper)
 
-# m_res, v_res, s_res = stats.bayes_mvs(valuesB - valuesA, alpha=alpha)
-# lower, upper = m_res.minmax
-# print(lower, upper)
+    # m_res, v_res, s_res = stats.bayes_mvs(d, alpha=alpha)
+    # lower, upper = m_res.minmax
+    # print(lower, upper)
 
-# paired t-test
-# e.g., before and after a treatment
-# stats.ttest_rel(post, pre)
-t, p, dof = dd.ttest_mean(0, alternative='two-sided')
-print('Difference ({0:.2f}\%)'.format(df['B'].mean() / df['A'].mean() * 10.0))
-print('t({0}) = {1:.2f} and p < {2:f}'.format(nm1, t, p))
-print('>>', end='')
-if p < 0.01 and t > 0:
-    print('0.01')
-elif p < 0.05 and t > 0:
-    print('0.05')
-else:
-    print('NOT')
+    # paired t-test
+    # e.g., before and after a treatment
+    # stats.ttest_rel(post, pre)
+    t, p, dof = dd.ttest_mean(0, alternative='two-sided')
+    print('Difference ({0:.2f}\%)'.format(np.mean(valuesB) / np.mean(valuesA) * 10.0))
+    print('t({0}) = {1:.2f} and p < {2:f}'.format(nm1, t, p))
 
-if not opts.quiet:
-    if p < 0.05 and t > 0:
-        print("According to a two-sided paired t-test for the difference in {10:s} means \(\mean{{d}} = {0:.4f}\) "
-            "(with the unbiased estimate of the population variance \(V = {1:.4f}\)), "
-            "{8:s} statistically significantly outperforms {9:s} "
-            "\((t({2}) = {3:.2f}\), "
-            "\(p < {4:f}\), "
-            "\(ES_{{pairedt}} = {5:.2f}\), "
-            "95\% CI \([{6:.4f},{7:.4f}]\)).".format(d, V, nm1, t, p, espairedt, lower, upper, system_b, system_a, METRIC.upper()))
+    if not opts.quiet:
+        if p < 0.05 and t > 0:
+            print("According to a two-sided paired t-test for the difference in {10:s} means \(\mean{{d}} = {0:.4f}\) "
+                "(with the unbiased estimate of the population variance \(V = {1:.4f}\)), "
+                "{8:s} statistically significantly outperforms {9:s} "
+                "\((t({2}) = {3:.2f}\), "
+                "\(p < {4:f}\), "
+                "\(ES_{{pairedt}} = {5:.2f}\), "
+                "95\% CI \([{6:.4f},{7:.4f}]\)).".format(dbar, V, nm1, t, p, espairedt, lower, upper, system_b, system_a, metric))
+
+    print('>> ', end='')
+    if p < 0.01 and t > 0:
+        print('0.01')
+        return True
+    elif p < 0.05 and t > 0:
+        print('0.05')
+        return True
+    else:
+        print('NOT')
+        return False
 
 
-espairedt = d / np.sqrt(V)
+def non_inferiority(valuesA, valuesB):
+    d = valuesB - valuesA
+    dbar = np.mean(d)
+    V = np.mean(np.power(d - dbar, 2))
+    dd = sms.DescrStatsW(d)
 
-alpha = 1 - 2*MEP
-tinv = stats.t.ppf(1 - 2*MEP, nm1)
-if n > 1000:
+    n = len(valuesA)
+    nm1 = n - 1
+
+    espairedt = dbar / np.sqrt(V)
+
+    alpha = 1 - 2*mep
+    tinv = stats.t.ppf(1 - 2*mep, nm1)
     # Sakai's paper uses the formula for large samples 
-    scale = np.sqrt(V / n)
-else:
+    # scale = np.sqrt(V / n)
     # However the following should be used for n <= 1000 samples
     scale = np.sqrt(V / nm1)
-me = tinv * scale
+    me = tinv * scale
 
-lower = d-me
-upper = d+me
-# print(lower, upper)
+    lower = dbar-me
+    upper = dbar+me
+    # print(lower, upper)
 
-# paired t-tost (equivalence)
-# e.g., before and after a treatment
-# sms.ttost_paired(post, pre, -delta, delta)
-p, t1, t2 = dd.ttost_mean(-delta, delta)
-if t1[1] < t2[1]:
-    t = t2[0]
-else:
-    t = t1[0]
-print('\nEquivalence')
-print('t({0}) = {1:.2f} and p < {2:f}'.format(nm1, t, p))
-print('>>', end='')
-if lower > -delta and upper < delta and p < 0.01:
-    print('0.01')
-elif lower > -delta and upper < delta and p < 0.05:
-    print('0.05')
-else:
-    print('NOT')
+    # paired t-test (non-inferiority)
+    # e.g., before and after a treatment
+    t, p, dof = dd.ttest_mean(-delta, alternative='larger')
+    print('\nNon-inferiority')
+    print('t({0}) = {1:.2f} and p < {2:f}'.format(nm1, t, p))
 
-if not opts.quiet:
-    if lower > -delta and upper < delta and p < 0.05:
-        print("According to two one-sided paired t-tests for the equivalence in {10:s} means \(\mean{{d}} = {0:.4f}\) "
-            "(with the unbiased estimate of the population variance \(V = {1:.4f}\)), "
-            "with equivalence margin \(\delta = {11:.2f}\) "
-            "{8:s} is statistically equivalent to {9:s} "
-            "\((t({2}) = {3:.2f}\), "
-            "\(p < {4:f}\), "
-            "\(ES_{{pairedt}} = {5:.2f}\), "
-            "90\% CI \([{6:.4f},{7:.4f}]\)).".format(d, V, nm1, t, p, espairedt, lower, upper, system_b, system_a, METRIC.upper(), delta))
+    if not opts.quiet:
+        if lower > -delta and p < 0.05:
+            print("According to a one-sided paired t-test for equality or superiority of {10:s} means \(\mean{{d}} = {0:.4f}\) "
+                "(with the unbiased estimate of the population variance \(V = {1:.4f}\)), "
+                "with equivalence margin \(\delta = {11:.2f}\) "
+                "{8:s} is statistically equal or superior to {9:s} "
+                "\((t({2}) = {3:.2f}\), "
+                "\(p < {4:f}\), "
+                "\(ES_{{pairedt}} = {5:.2f}\), "
+                "90\% CI \([{6:.4f},{7:.4f}]\)).".format(dbar, V, nm1, t, p, espairedt, lower, upper, system_b, system_a, metric, delta))
+
+    print('>> ', end='')
+    if lower > -delta and p < 0.01:
+        print('0.01')
+        return True
+    elif lower > -delta and p < 0.05:
+        print('0.05')
+        return True
+    else:
+        print('NOT')
+        return False
 
 
-espairedt = d / np.sqrt(V)
+def equivalence(valuesA, valuesB):
+    d = valuesB - valuesA
+    dbar = np.mean(d)
+    V = np.mean(np.power(d - dbar, 2))
+    dd = sms.DescrStatsW(d)
 
-alpha = 1 - 2*MEP
-tinv = stats.t.ppf(1 - 2*MEP, nm1)
-if n > 1000:
+    n = len(valuesA)
+    nm1 = n - 1
+
+    espairedt = d / np.sqrt(V)
+
+    alpha = 1 - 2*mep
+    tinv = stats.t.ppf(1 - 2*mep, nm1)
     # Sakai's paper uses the formula for large samples 
-    scale = np.sqrt(V / n)
-else:
+    # scale = np.sqrt(V / n)
     # However the following should be used for n <= 1000 samples
     scale = np.sqrt(V / nm1)
-me = tinv * scale
+    me = tinv * scale
 
-lower = d-me
-upper = d+me
-# print(lower, upper)
+    lower = dbar-me
+    upper = dbar+me
+    # print(lower, upper)
 
-# paired t-test (non-inferiority)
-# e.g., before and after a treatment
-t, p, dof = dd.ttest_mean(-delta, alternative='larger')
-print('\nNon-inferiority')
-print('t({0}) = {1:.2f} and p < {2:f}'.format(nm1, t, p))
-print('>>', end='')
-if lower > -delta and p < 0.01:
-    print('0.01')
-elif lower > -delta and p < 0.05:
-    print('0.05')
-else:
-    print('NOT')
+    # paired t-tost (equivalence)
+    # e.g., before and after a treatment
+    # sms.ttost_paired(post, pre, -delta, delta)
+    p, t1, t2 = dd.ttost_mean(-delta, delta)
+    if t1[1] < t2[1]:
+        t = t2[0]
+    else:
+        t = t1[0]
+    print('\nEquivalence')
+    print('t({0}) = {1:.2f} and p < {2:f}'.format(nm1, t, p))
 
-if not opts.quiet:
-    if lower > -delta and p < 0.05:
-        print("According to a one-sided paired t-test for equality or superiority of {10:s} means \(\mean{{d}} = {0:.4f}\) "
-            "(with the unbiased estimate of the population variance \(V = {1:.4f}\)), "
-            "with equivalence margin \(\delta = {11:.2f}\) "
-            "{8:s} is statistically equal or superior to {9:s} "
-            "\((t({2}) = {3:.2f}\), "
-            "\(p < {4:f}\), "
-            "\(ES_{{pairedt}} = {5:.2f}\), "
-            "90\% CI \([{6:.4f},{7:.4f}]\)).".format(d, V, nm1, t, p, espairedt, lower, upper, system_b, system_a, METRIC.upper(), delta))
+    if not opts.quiet:
+        if lower > -delta and upper < delta and p < 0.05:
+            print("According to two one-sided paired t-tests for the equivalence in {10:s} means \(\mean{{d}} = {0:.4f}\) "
+                "(with the unbiased estimate of the population variance \(V = {1:.4f}\)), "
+                "with equivalence margin \(\delta = {11:.2f}\) "
+                "{8:s} is statistically equivalent to {9:s} "
+                "\((t({2}) = {3:.2f}\), "
+                "\(p < {4:f}\), "
+                "\(ES_{{pairedt}} = {5:.2f}\), "
+                "90\% CI \([{6:.4f},{7:.4f}]\)).".format(dbar, V, nm1, t, p, espairedt, lower, upper, system_b, system_a, metric, delta))
+
+    print('>> ', end='')
+    if lower > -delta and upper < delta and p < 0.01:
+        print('0.01')
+        return True
+    elif lower > -delta and upper < delta and p < 0.05:
+        print('0.05')
+        return True
+    else:
+        print('NOT')
+        return False
+
+
+if not difference(valuesA, valuesB):
+    if not non_inferiority(valuesA, valuesB):
+        equivalence(valuesA, valuesB)
