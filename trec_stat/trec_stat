@@ -116,7 +116,7 @@ def difference(valuesA, valuesB):
     # e.g., before and after a treatment
     # stats.ttest_rel(post, pre)
     t, p, dof = dd.ttest_mean(0, alternative='two-sided')
-    print('Difference ({0:.2f}\%)'.format(np.mean(valuesB) / np.mean(valuesA) * 10.0))
+    print('t-test for the difference in {0} mean(d) = {1:.4f} ({2:.2f}\%)'.format(metric, dbar, dbar / np.mean(valuesA) * 100.0))
     print('t({0}) = {1:.2f} and p < {2:f}'.format(nm1, t, p))
 
     if not opts.quiet:
@@ -167,7 +167,7 @@ def non_inferiority(valuesA, valuesB):
     # paired t-test (non-inferiority)
     # e.g., before and after a treatment
     t, p, dof = dd.ttest_mean(-delta, alternative='larger')
-    print('\nNon-inferiority')
+    print('\nt-test for non-inferiority of {0} mean(d) = {1:.4f} ({2:.2f}\%)'.format(metric, dbar, dbar / np.mean(valuesA) * 100.0))
     print('t({0}) = {1:.2f} and p < {2:f}'.format(nm1, t, p))
 
     if not opts.quiet:
@@ -224,7 +224,7 @@ def equivalence(valuesA, valuesB):
         t = t2[0]
     else:
         t = t1[0]
-    print('\nEquivalence')
+    print('\ntwo one-sided t-tests for the equivalence in {0} mean(d) = {1:.4f} ({2:.2f}\%)'.format(metric, dbar, dbar / np.mean(valuesA) * 100.0))
     print('t({0}) = {1:.2f} and p < {2:f}'.format(nm1, t, p))
 
     if not opts.quiet:
