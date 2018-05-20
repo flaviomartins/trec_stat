@@ -1,0 +1,198 @@
+#!/usr/bin/env python
+from __future__ import print_function
+
+import sys
+import numpy as np
+import pandas as pd
+from scipy import stats
+import statsmodels.stats.api as sms
+
+
+if len(sys.argv) > 3:
+	METRIC = sys.argv[3]
+else:
+	METRIC = 'map'
+
+system_a = sys.argv[1]
+system_b = sys.argv[2]
+
+tnames = ['measure', 'topic', 'value']
+dfA = pd.read_table(system_a, delim_whitespace=True, header=None, names=tnames)
+dfB = pd.read_table(system_b, delim_whitespace=True, header=None, names=tnames)
+
+dfA = dfA.pivot_table(values='value', index='topic', columns='measure')
+dfB = dfB.pivot_table(values='value', index='topic', columns='measure')
+
+# drop the row with 'all' results
+dfA.drop(['all'], inplace=True)
+dfB.drop(['all'], inplace=True)
+
+try:
+    # drop runid column
+    dfA.drop('runid', axis=1, inplace=True)
+    dfB.drop('runid', axis=1, inplace=True)
+except ValueError as e:
+    pass
+
+df = dfA[[METRIC]].copy()
+df.columns = ['A']
+df['B'] = dfB[[METRIC]]
+
+# pd.to_numeric() pandas 0.17 alternative
+df[['A', 'B']] = df[['A', 'B']].astype(float)
+
+df['d'] = df['B'] - df['A']
+d = df['d'].mean()
+
+df['V'] = np.power(df['d'] - d, 2)
+V = df['V'].mean()
+
+n = df.shape[0]
+nm1 = n - 1
+
+valuesA = df['A'].as_matrix()
+valuesB = df['B'].as_matrix()
+dd = sms.DescrStatsW(valuesB - valuesA)
+
+
+espairedt = d / np.sqrt(V)
+
+MEP = 0.05
+alpha = 1 - MEP
+tinv = stats.t.ppf(1 - (MEP / 2), nm1)
+if n > 1000:
+    # Sakai's paper uses the same formula for small samples 
+    scale = np.sqrt(V / n)
+else:
+    # However the following should be used for n <= 1000 samples
+    scale = np.sqrt(V / nm1)
+me = tinv * scale
+
+lower = d-me
+upper = d+me
+# print(lower, upper)
+
+# lower, upper = dd.tconfint_mean(alpha=MEP, alternative='two-sided')
+# print(lower, upper)
+
+# lower, upper = stats.t.interval(alpha=alpha, df=nm1, loc=d, scale=stats.sem(valuesB - valuesA, ddof=1))
+# print(lower, upper)
+
+# m_res, v_res, s_res = stats.bayes_mvs(valuesB - valuesA, alpha=alpha)
+# lower, upper = m_res.minmax
+# print(lower, upper)
+
+# paired t-test
+# e.g., before and after a treatment
+# stats.ttest_rel(post, pre)
+t, p, dof = dd.ttest_mean(0, alternative='two-sided')
+print('Difference ({0:.2f}\%)'.format(df['B'].mean() / df['A'].mean() * 10.0))
+print('The t-statistic is {0:.4f} and the p-value is {1:f}'.format(t, p))
+print('>>', end='')
+if p < 0.01 and t > 0:
+    print('0.01')
+elif p < 0.05 and t > 0:
+    print('0.05')
+else:
+    print('NOT')
+
+
+if p < 0.05 and t > 0:
+    print("According to a two-sided paired t-test for the difference in {10:s} means \(\mean{{d}} = {0:.4f}\) "
+        "(with the unbiased estimate of the population variance \(V = {1:.4f}\)), "
+        "{8:s} statistically significantly outperforms {9:s} "
+        "\((t({2}) = {3:.2f}\), "
+        "\(p < {4:f}\), "
+        "\(ES_{{pairedt}} = {5:.2f}\), "
+        "95\% CI \([{6:.4f},{7:.4f}]\)).".format(d, V, nm1, t, p, espairedt, lower, upper, system_b, system_a, METRIC.upper()))
+
+
+espairedt = d / np.sqrt(V)
+
+MEP = 0.05
+alpha = 1 - 2*MEP
+tinv = stats.t.ppf(1 - 2*MEP, nm1)
+if n > 1000:
+    # Sakai's paper uses the same formula for small samples 
+    scale = np.sqrt(V / n)
+else:
+    # However the following should be used for n <= 1000 samples
+    scale = np.sqrt(V / nm1)
+me = tinv * scale
+
+lower = d-me
+upper = d+me
+delta = 0.01
+# print(lower, upper, delta)
+
+# paired t-tost (equivalence)
+# e.g., before and after a treatment
+# sms.ttost_paired(post, pre, -delta, delta)
+p, t1, t2 = dd.ttost_mean(-delta, delta)
+if t1[1] < t2[1]:
+    t = t2[0]
+else:
+    t = t1[0]
+print('\nEquivalence')
+print('The t-statistic is {0:.4f} and the p-value is {1:f}'.format(t, p))
+print('>>', end='')
+if lower > -delta and upper < delta and p < 0.01:
+    print('0.01')
+elif lower > -delta and upper < delta and p < 0.05:
+    print('0.05')
+else:
+    print('NOT')
+
+
+if lower > -delta and upper < delta and p < 0.05:
+    print("According to two one-sided paired t-tests for the equivalence in {10:s} means \(\mean{{d}} = {0:.4f}\) "
+        "(with the unbiased estimate of the population variance \(V = {1:.4f}\)), "
+        "with equivalence margin \(\delta = {11:.2f}\) "
+        "{8:s} is statistically equivalent to {9:s} "
+        "\((t({2}) = {3:.2f}\), "
+        "\(p < {4:f}\), "
+        "\(ES_{{pairedt}} = {5:.2f}\), "
+        "90\% CI \([{6:.4f},{7:.4f}]\)).".format(d, V, nm1, t, p, espairedt, lower, upper, system_b, system_a, METRIC.upper(), delta))
+
+
+espairedt = d / np.sqrt(V)
+
+MEP = 0.05
+alpha = 1 - 2*MEP
+tinv = stats.t.ppf(1 - 2*MEP, nm1)
+if n > 1000:
+    # Sakai's paper uses the same formula for small samples 
+    scale = np.sqrt(V / n)
+else:
+    # However the following should be used for n <= 1000 samples
+    scale = np.sqrt(V / nm1)
+me = tinv * scale
+
+lower = d-me
+upper = d+me
+delta = 0.01
+# print(lower, upper, delta)
+
+# paired t-test (non-inferiority)
+# e.g., before and after a treatment
+t, p, dof = dd.ttest_mean(-delta, alternative='larger')
+print('\nNon-inferiority')
+print('The t-statistic is {0:.4f} and the p-value is {1:f}'.format(t, p))
+print('>>', end='')
+if lower > -delta and p < 0.01:
+    print('0.01')
+elif lower > -delta and p < 0.05:
+    print('0.05')
+else:
+    print('NOT')
+
+
+if lower > -delta and p < 0.05:
+    print("According to a one-sided paired t-test for equality or superiority of {10:s} means \(\mean{{d}} = {0:.4f}\) "
+        "(with the unbiased estimate of the population variance \(V = {1:.4f}\)), "
+        "with equivalence margin \(\delta = {11:.2f}\) "
+        "{8:s} is statistically equal or superior to {9:s} "
+        "\((t({2}) = {3:.2f}\), "
+        "\(p < {4:f}\), "
+        "\(ES_{{pairedt}} = {5:.2f}\), "
+        "90\% CI \([{6:.4f},{7:.4f}]\)).".format(d, V, nm1, t, p, espairedt, lower, upper, system_b, system_a, METRIC.upper(), delta))
