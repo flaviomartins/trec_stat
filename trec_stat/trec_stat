@@ -2,13 +2,13 @@
 from __future__ import print_function
 
 import logging
-from optparse import OptionParser
 import sys
+from optparse import OptionParser
+
 import numpy as np
 import pandas as pd
-from scipy import stats
 import statsmodels.stats.api as sms
-
+from scipy import stats
 
 # Display progress logs on stdout
 logging.basicConfig(level=logging.INFO,
@@ -51,11 +51,11 @@ delta = opts.margin
 
 
 tnames = ['measure', 'topic', 'value']
-dfA = pd.read_table(system_a, delim_whitespace=True, header=None, names=tnames)
-dfB = pd.read_table(system_b, delim_whitespace=True, header=None, names=tnames)
+dfA = pd.read_table(system_a, delim_whitespace=True, header=None, names=tnames, skipfooter=1)
+dfB = pd.read_table(system_b, delim_whitespace=True, header=None, names=tnames, skipfooter=1)
 
-dfA = dfA.pivot_table(values='value', index='topic', columns='measure')
-dfB = dfB.pivot_table(values='value', index='topic', columns='measure')
+dfA = dfA.pivot_table(values='value', index='topic', columns='measure', fill_value='', aggfunc=lambda x: x)
+dfB = dfB.pivot_table(values='value', index='topic', columns='measure', fill_value='', aggfunc=lambda x: x)
 
 # drop the row with 'all' results
 dfA.drop(['all'], inplace=True)
@@ -75,8 +75,8 @@ df['B'] = dfB[[metric]]
 # pd.to_numeric() pandas 0.17 alternative
 df[['A', 'B']] = df[['A', 'B']].astype(float)
 
-valuesA = df['A'].as_matrix()
-valuesB = df['B'].as_matrix()
+valuesA = df['A'].values
+valuesB = df['B'].values
 
 
 def difference(valuesA, valuesB):
