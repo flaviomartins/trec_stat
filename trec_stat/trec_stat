@@ -65,7 +65,7 @@ try:
     # drop runid column
     dfA.drop('runid', axis=1, inplace=True)
     dfB.drop('runid', axis=1, inplace=True)
-except ValueError as e:
+except (ValueError, KeyError) as e:
     pass
 
 df = dfA[[metric]].copy()
